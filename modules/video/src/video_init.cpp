@@ -43,12 +43,79 @@
 #include "precomp.hpp"
 #include "opencv2/video.hpp"
 
-namespace cv
-{
 
-bool initModule_video(void)
+#define CV_INIT_ALGORITHM_2(classname, algname, memberinit) \
+    static inline ::cv::Algorithm* create##classname##_hidden() \
+    { \
+        return create##classname(); \
+    } \
+    \
+    static inline ::cv::Ptr< ::cv::Algorithm> create##classname##_ptr_hidden() \
+    { \
+        return create##classname(); \
+    } \
+    \
+    static inline ::cv::AlgorithmInfo& classname##_info() \
+    { \
+        static ::cv::AlgorithmInfo classname##_info_var(algname, create##classname##_hidden); \
+        return classname##_info_var; \
+    } \
+    \
+    static ::cv::AlgorithmInfo& classname##_info_auto = classname##_info(); \
+    \
+    ::cv::AlgorithmInfo* classname::info() const \
+    { \
+        static volatile bool initialized = false; \
+        \
+        if( !initialized ) \
+        { \
+            initialized = true; \
+            ::cv::Ptr<classname> obj = create##classname(); \
+            memberinit; \
+        } \
+        return &classname##_info(); \
+    }
+
+//namespace cv
+//{
+
+using namespace cv;
+
+/*Ptr<BackgroundSubtractor> BackgroundSubtractor::create( const String& backgroundSubtractorType )
 {
-    return true;
+    return Algorithm::create<BackgroundSubtractor>("BackgroundSubtractor." + backgroundSubtractorType);
+}*/
+
+/////////////////////// AlgorithmInfo for various background subtractors ////////////////////////////
+
+/* NOTE!!!
+   All the AlgorithmInfo-related stuff should be in the same file as initModule_video().
+   Otherwise, linker may throw away some seemingly unused stuff.
+*/
+
+CV_INIT_ALGORITHM_2(BackgroundSubtractorMOG, "BackgroundSubtractor.MOG",
+                    int i = 0;
+
+                   obj->info()->addParam(*obj, "history", i, false, obj->getHistory, obj->setHistory, "Help-String!"))
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+CV_INIT_ALGORITHM_2(BackgroundSubtractorMOG2, "BackgroundSubtractor.MOG2",;)
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+CV_INIT_ALGORITHM_2(BackgroundSubtractorGMG, "BackgroundSubtractor.GMG",;)
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+bool cv::initModule_video(void)
+{
+    bool all = true;
+    all &= !BackgroundSubtractorMOG_info_auto.name().empty();
+    all &= !BackgroundSubtractorMOG2_info_auto.name().empty();
+    all &= !BackgroundSubtractorGMG_info_auto.name().empty();
+
+    return all;
 }
 
-}
+//}

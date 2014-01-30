@@ -91,6 +91,8 @@ public:
 
     CV_WRAP virtual double getNoiseSigma() const = 0;
     CV_WRAP virtual void setNoiseSigma(double noiseSigma) = 0;
+
+    AlgorithmInfo* info() const;
 };
 
 CV_EXPORTS_W Ptr<BackgroundSubtractorMOG>
@@ -144,6 +146,8 @@ public:
 
     CV_WRAP virtual double getShadowThreshold() const = 0;
     CV_WRAP virtual void setShadowThreshold(double threshold) = 0;
+
+    AlgorithmInfo* info() const;
 };
 
 CV_EXPORTS_W Ptr<BackgroundSubtractorMOG2>
@@ -189,6 +193,8 @@ public:
 
     CV_WRAP virtual double getMaxVal() const = 0;
     CV_WRAP virtual void setMaxVal(double val) = 0;
+
+    AlgorithmInfo* info() const;
 };
 
 
