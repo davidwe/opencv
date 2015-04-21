@@ -55,7 +55,7 @@ TEST(Parse, ParseEmptyString)
     EXPECT_FALSE(ParseString(a, key, value));
 }
 
-TEST(Parse, ParseStringWithoutSeporator)
+TEST(Parse, ParseStringWithoutSeparator)
 {
     string a = "qqqwww";
     string key;
@@ -146,11 +146,19 @@ TEST(CpuID, CheckMips)
     EXPECT_TRUE(cpu_id & ARCH_MIPS);
 }
 #endif
+#elif defined(__aarch64__)
+TEST(CpuID, CheckAarch64)
+{
+    int cpu_id = GetCpuID();
+    EXPECT_TRUE(cpu_id & ARCH_AARCH64);
+}
 #else
+# if defined(__arm__) && defined(USE_TEGRA_HW_DETECTOR)
 TEST(TegraDetector, Detect)
 {
     EXPECT_TRUE(DetectTegra() != 0);
 }
+# endif
 
 TEST(CpuID, CheckArmV7)
 {

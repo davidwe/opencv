@@ -43,7 +43,7 @@
 //
 //M*/
 
-#include "test_precomp.hpp"
+#include "../test_precomp.hpp"
 #include "opencv2/ts/ocl_test.hpp"
 
 #ifdef HAVE_OPENCL
@@ -58,29 +58,29 @@ IMPLEMENT_PARAM_CLASS(AppertureSize, int)
 IMPLEMENT_PARAM_CLASS(L2gradient, bool)
 IMPLEMENT_PARAM_CLASS(UseRoi, bool)
 
-PARAM_TEST_CASE(Canny, AppertureSize, L2gradient, UseRoi)
+PARAM_TEST_CASE(Canny, Channels, AppertureSize, L2gradient, UseRoi)
 {
-    int apperture_size;
+    int cn, apperture_size;
     bool useL2gradient, use_roi;
 
-    TEST_DECLARE_INPUT_PARAMETER(src)
-    TEST_DECLARE_OUTPUT_PARAMETER(dst)
+    TEST_DECLARE_INPUT_PARAMETER(src);
+    TEST_DECLARE_OUTPUT_PARAMETER(dst);
 
     virtual void SetUp()
     {
-        apperture_size = GET_PARAM(0);
-        useL2gradient = GET_PARAM(1);
-        use_roi = GET_PARAM(2);
+        cn = GET_PARAM(0);
+        apperture_size = GET_PARAM(1);
+        useL2gradient = GET_PARAM(2);
+        use_roi = GET_PARAM(3);
     }
 
     void generateTestData()
     {
-        Mat img = readImage("shared/fruits.png", IMREAD_GRAYSCALE);
+        Mat img = readImageType("shared/fruits.png", CV_8UC(cn));
         ASSERT_FALSE(img.empty()) << "cann't load shared/fruits.png";
 
         Size roiSize = img.size();
         int type = img.type();
-        ASSERT_EQ(CV_8UC1, type);
 
         Border srcBorder = randomBorder(0, use_roi ? MAX_VALUE : 0);
         randomSubMat(src, src_roi, roiSize, srcBorder, type, 2, 100);
@@ -89,8 +89,8 @@ PARAM_TEST_CASE(Canny, AppertureSize, L2gradient, UseRoi)
         Border dstBorder = randomBorder(0, use_roi ? MAX_VALUE : 0);
         randomSubMat(dst, dst_roi, roiSize, dstBorder, type, 5, 16);
 
-        UMAT_UPLOAD_INPUT_PARAMETER(src)
-        UMAT_UPLOAD_OUTPUT_PARAMETER(dst)
+        UMAT_UPLOAD_INPUT_PARAMETER(src);
+        UMAT_UPLOAD_OUTPUT_PARAMETER(dst);
     }
 };
 
@@ -99,15 +99,21 @@ OCL_TEST_P(Canny, Accuracy)
     generateTestData();
 
     const double low_thresh = 50.0, high_thresh = 100.0;
+    double eps = 1e-2;
+#ifdef ANDROID
+    if (cv::ocl::Device::getDefault().isNVidia())
+        eps = 12e-3;
+#endif
 
     OCL_OFF(cv::Canny(src_roi, dst_roi, low_thresh, high_thresh, apperture_size, useL2gradient));
     OCL_ON(cv::Canny(usrc_roi, udst_roi, low_thresh, high_thresh, apperture_size, useL2gradient));
 
-    EXPECT_MAT_SIMILAR(dst_roi, udst_roi, 1e-2);
-    EXPECT_MAT_SIMILAR(dst, udst, 1e-2);
+    EXPECT_MAT_SIMILAR(dst_roi, udst_roi, eps);
+    EXPECT_MAT_SIMILAR(dst, udst, eps);
 }
 
 OCL_INSTANTIATE_TEST_CASE_P(ImgProc, Canny, testing::Combine(
+                                testing::Values(1, 3),
                                 testing::Values(AppertureSize(3), AppertureSize(5)),
                                 testing::Values(L2gradient(false), L2gradient(true)),
                                 testing::Values(UseRoi(false), UseRoi(true))));

@@ -4,7 +4,7 @@
 //
 // Copyright (C) 2014, Advanced Micro Devices, Inc., all rights reserved.
 
-#include "perf_precomp.hpp"
+#include "../perf_precomp.hpp"
 #include "opencv2/ts/ocl_perf.hpp"
 
 #ifdef HAVE_OPENCL
@@ -34,7 +34,7 @@ OCL_PERF_TEST_P(UsageFlagsBoolFixture, UsageFlags_AllocHostMem, ::testing::Combi
         cv::subtract(dst, Scalar::all(1), final);
     }
 
-    SANITY_CHECK_NOTHING()
+    SANITY_CHECK_NOTHING();
 }
 
 } } // namespace cvtest::ocl

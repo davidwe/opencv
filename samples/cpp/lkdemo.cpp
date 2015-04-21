@@ -1,5 +1,6 @@
 #include "opencv2/video/tracking.hpp"
 #include "opencv2/imgproc/imgproc.hpp"
+#include "opencv2/videoio/videoio.hpp"
 #include "opencv2/highgui/highgui.hpp"
 
 #include <iostream>
@@ -60,12 +61,11 @@ int main( int argc, char** argv )
     namedWindow( "LK Demo", 1 );
     setMouseCallback( "LK Demo", onMouse, 0 );
 
-    Mat gray, prevGray, image;
+    Mat gray, prevGray, image, frame;
     vector<Point2f> points[2];
 
     for(;;)
     {
-        Mat frame;
         cap >> frame;
         if( frame.empty() )
             break;

@@ -13,6 +13,7 @@
 // Copyright (C) 2000-2008, Intel Corporation, all rights reserved.
 // Copyright (C) 2009, Willow Garage Inc., all rights reserved.
 // Copyright (C) 2013, OpenCV Foundation, all rights reserved.
+// Copyright (C) 2015, Itseez Inc., all rights reserved.
 // Third party copyrights are property of their respective owners.
 //
 // Redistribution and use in source and binary forms, with or without modification,
@@ -55,22 +56,10 @@
 #undef abs
 #undef Complex
 
-#if defined __ICL
-#  define CV_ICC   __ICL
-#elif defined __ICC
-#  define CV_ICC   __ICC
-#elif defined __ECL
-#  define CV_ICC   __ECL
-#elif defined __ECC
-#  define CV_ICC   __ECC
-#elif defined __INTEL_COMPILER
-#  define CV_ICC   __INTEL_COMPILER
-#endif
+#include "opencv2/hal/defs.h"
 
-#if defined CV_ICC && !defined CV_ENABLE_UNROLLED
-#  define CV_ENABLE_UNROLLED 0
-#else
-#  define CV_ENABLE_UNROLLED 1
+#ifdef __OPENCV_BUILD
+#  define DISABLE_OPENCV_24_COMPATIBILITY
 #endif
 
 #if (defined WIN32 || defined _WIN32 || defined WINCE || defined __CYGWIN__) && defined CVAPI_EXPORTS
@@ -99,137 +88,6 @@
 #  endif
 #endif
 
-/* CPU features and intrinsics support */
-#define CV_CPU_NONE    0
-#define CV_CPU_MMX     1
-#define CV_CPU_SSE     2
-#define CV_CPU_SSE2    3
-#define CV_CPU_SSE3    4
-#define CV_CPU_SSSE3   5
-#define CV_CPU_SSE4_1  6
-#define CV_CPU_SSE4_2  7
-#define CV_CPU_POPCNT  8
-#define CV_CPU_AVX    10
-#define CV_CPU_NEON   11
-// when adding to this list remember to update the enum in core/utility.cpp
-#define CV_HARDWARE_MAX_FEATURE 255
-
-// do not include SSE/AVX/NEON headers for NVCC compiler
-#ifndef __CUDACC__
-
-#if defined __SSE2__ || defined _M_X64  || (defined _M_IX86_FP && _M_IX86_FP >= 2)
-#  include <emmintrin.h>
-#  define CV_SSE 1
-#  define CV_SSE2 1
-#  if defined __SSE3__ || (defined _MSC_VER && _MSC_VER >= 1500)
-#    include <pmmintrin.h>
-#    define CV_SSE3 1
-#  endif
-#  if defined __SSSE3__  || (defined _MSC_VER && _MSC_VER >= 1500)
-#    include <tmmintrin.h>
-#    define CV_SSSE3 1
-#  endif
-#  if defined __SSE4_1__ || (defined _MSC_VER && _MSC_VER >= 1500)
-#    include <smmintrin.h>
-#    define CV_SSE4_1 1
-#  endif
-#  if defined __SSE4_2__ || (defined _MSC_VER && _MSC_VER >= 1500)
-#    include <nmmintrin.h>
-#    define CV_SSE4_2 1
-#  endif
-#  if defined __AVX__ || (defined _MSC_FULL_VER && _MSC_FULL_VER >= 160040219)
-// MS Visual Studio 2010 (2012?) has no macro pre-defined to identify the use of /arch:AVX
-// See: http://connect.microsoft.com/VisualStudio/feedback/details/605858/arch-avx-should-define-a-predefined-macro-in-x64-and-set-a-unique-value-for-m-ix86-fp-in-win32
-#    include <immintrin.h>
-#    define CV_AVX 1
-#    if defined(_XCR_XFEATURE_ENABLED_MASK)
-#      define __xgetbv() _xgetbv(_XCR_XFEATURE_ENABLED_MASK)
-#    else
-#      define __xgetbv() 0
-#    endif
-#  endif
-#endif
-
-#if (defined WIN32 || defined _WIN32) && defined(_M_ARM)
-# include <Intrin.h>
-# include "arm_neon.h"
-# define CV_NEON 1
-# define CPU_HAS_NEON_FEATURE (true)
-#elif defined(__ARM_NEON__)
-#  include <arm_neon.h>
-#  define CV_NEON 1
-#endif
-
-#endif // __CUDACC__
-
-#ifndef CV_SSE
-#  define CV_SSE 0
-#endif
-#ifndef CV_SSE2
-#  define CV_SSE2 0
-#endif
-#ifndef CV_SSE3
-#  define CV_SSE3 0
-#endif
-#ifndef CV_SSSE3
-#  define CV_SSSE3 0
-#endif
-#ifndef CV_SSE4_1
-#  define CV_SSE4_1 0
-#endif
-#ifndef CV_SSE4_2
-#  define CV_SSE4_2 0
-#endif
-#ifndef CV_AVX
-#  define CV_AVX 0
-#endif
-#ifndef CV_NEON
-#  define CV_NEON 0
-#endif
-
-/* primitive types */
-/*
-  schar  - signed 1 byte integer
-  uchar  - unsigned 1 byte integer
-  short  - signed 2 byte integer
-  ushort - unsigned 2 byte integer
-  int    - signed 4 byte integer
-  uint   - unsigned 4 byte integer
-  int64  - signed 8 byte integer
-  uint64 - unsigned 8 byte integer
-*/
-
-#if !defined _MSC_VER && !defined __BORLANDC__
-#  if defined __cplusplus && __cplusplus >= 201103L
-#    include <cstdint>
-     typedef std::uint32_t uint;
-#  else
-#    include <stdint.h>
-     typedef uint32_t uint;
-#  endif
-#else
-   typedef unsigned uint;
-#endif
-
-typedef signed char schar;
-
-#ifndef __IPL_H__
-   typedef unsigned char uchar;
-   typedef unsigned short ushort;
-#endif
-
-#if defined _MSC_VER || defined __BORLANDC__
-   typedef __int64 int64;
-   typedef unsigned __int64 uint64;
-#  define CV_BIG_INT(n)   n##I64
-#  define CV_BIG_UINT(n)  n##UI64
-#else
-   typedef int64_t int64;
-   typedef uint64_t uint64;
-#  define CV_BIG_INT(n)   n##LL
-#  define CV_BIG_UINT(n)  n##ULL
-#endif
-
 /* special informative macros for wrapper generators */
 #define CV_EXPORTS_W CV_EXPORTS
 #define CV_EXPORTS_W_SIMPLE CV_EXPORTS
@@ -241,10 +99,6 @@ typedef signed char schar;
 #define CV_PROP_RW
 #define CV_WRAP
 #define CV_WRAP_AS(synonym)
-
-/* fundamental constants */
-#define CV_PI   3.1415926535897932384626433832795
-#define CV_LOG2 0.69314718055994530941723212145818
 
 /****************************************************************************************\
 *                                  Matrix type (Mat)                                     *
@@ -357,6 +211,31 @@ typedef signed char schar;
 #  include "tegra_round.hpp"
 #endif
 
+//! @addtogroup core_utils
+//! @{
+
+#if CV_VFP
+// 1. general scheme
+#define ARM_ROUND(_value, _asm_string) \
+    int res; \
+    float temp; \
+    asm(_asm_string : [res] "=r" (res), [temp] "=w" (temp) : [value] "w" (_value)); \
+    return res;
+// 2. version for double
+#ifdef __clang__
+#define ARM_ROUND_DBL(value) ARM_ROUND(value, "vcvtr.s32.f64 %[temp], %[value] \n vmov %[res], %[temp]")
+#else
+#define ARM_ROUND_DBL(value) ARM_ROUND(value, "vcvtr.s32.f64 %[temp], %P[value] \n vmov %[res], %[temp]")
+#endif
+// 3. version for float
+#define ARM_ROUND_FLT(value) ARM_ROUND(value, "vcvtr.s32.f32 %[temp], %[value]\n vmov %[res], %[temp]")
+#endif // CV_VFP
+
+/** @brief Rounds floating-point number to the nearest integer
+
+@param value floating-point number. If the value is outside of INT_MIN ... INT_MAX range, the
+result is not defined.
+ */
 CV_INLINE int cvRound( double value )
 {
 #if ((defined _MSC_VER && defined _M_X64) || (defined __GNUC__ && defined __x86_64__ && defined __SSE2__ && !defined __APPLE__)) && !defined(__CUDACC__)
@@ -370,14 +249,14 @@ CV_INLINE int cvRound( double value )
         fistp t;
     }
     return t;
-#elif defined _MSC_VER && defined _M_ARM && defined HAVE_TEGRA_OPTIMIZATION
-    TEGRA_ROUND(value);
+#elif ((defined _MSC_VER && defined _M_ARM) || defined CV_ICC || defined __GNUC__) && defined HAVE_TEGRA_OPTIMIZATION
+    TEGRA_ROUND_DBL(value);
 #elif defined CV_ICC || defined __GNUC__
-#  ifdef HAVE_TEGRA_OPTIMIZATION
-    TEGRA_ROUND(value);
-#  else
+# if CV_VFP
+    ARM_ROUND_DBL(value)
+# else
     return (int)lrint(value);
-#  endif
+# endif
 #else
     double intpart, fractpart;
     fractpart = modf(value, &intpart);
@@ -388,6 +267,35 @@ CV_INLINE int cvRound( double value )
 #endif
 }
 
+#ifdef __cplusplus
+
+/** @overload */
+CV_INLINE int cvRound(float value)
+{
+#if defined ANDROID && (defined CV_ICC || defined __GNUC__) && defined HAVE_TEGRA_OPTIMIZATION
+    TEGRA_ROUND_FLT(value);
+#elif CV_VFP && !defined HAVE_TEGRA_OPTIMIZATION
+    ARM_ROUND_FLT(value)
+#else
+    return cvRound((double)value);
+#endif
+}
+
+/** @overload */
+CV_INLINE int cvRound(int value)
+{
+    return value;
+}
+
+#endif // __cplusplus
+
+/** @brief Rounds floating-point number to the nearest integer not larger than the original.
+
+The function computes an integer i such that:
+\f[i \le \texttt{value} < i+1\f]
+@param value floating-point number. If the value is outside of INT_MIN ... INT_MAX range, the
+result is not defined.
+ */
 CV_INLINE int cvFloor( double value )
 {
 #if (defined _MSC_VER && defined _M_X64 || (defined __GNUC__ && defined __SSE2__ && !defined __APPLE__)) && !defined(__CUDACC__)
@@ -404,6 +312,13 @@ CV_INLINE int cvFloor( double value )
 #endif
 }
 
+/** @brief Rounds floating-point number to the nearest integer not larger than the original.
+
+The function computes an integer i such that:
+\f[i \le \texttt{value} < i+1\f]
+@param value floating-point number. If the value is outside of INT_MIN ... INT_MAX range, the
+result is not defined.
+*/
 CV_INLINE int cvCeil( double value )
 {
 #if (defined _MSC_VER && defined _M_X64 || (defined __GNUC__ && defined __SSE2__&& !defined __APPLE__)) && !defined(__CUDACC__)
@@ -420,6 +335,12 @@ CV_INLINE int cvCeil( double value )
 #endif
 }
 
+/** @brief Determines if the argument is Not A Number.
+
+@param value The input floating-point value
+
+The function returns 1 if the argument is Not A Number (as defined by IEEE754 standard), 0
+otherwise. */
 CV_INLINE int cvIsNaN( double value )
 {
     union { uint64 u; double f; } ieee754;
@@ -428,6 +349,12 @@ CV_INLINE int cvIsNaN( double value )
            ((unsigned)ieee754.u != 0) > 0x7ff00000;
 }
 
+/** @brief Determines if the argument is Infinity.
+
+@param value The input floating-point value
+
+The function returns 1 if the argument is a plus or minus infinity (as defined by IEEE754 standard)
+and 0 otherwise. */
 CV_INLINE int cvIsInf( double value )
 {
     union { uint64 u; double f; } ieee754;
@@ -435,6 +362,8 @@ CV_INLINE int cvIsInf( double value )
     return ((unsigned)(ieee754.u >> 32) & 0x7fffffff) == 0x7ff00000 &&
            (unsigned)ieee754.u == 0;
 }
+
+//! @} core_utils
 
 /****************************************************************************************\
 *          exchange-add operation for atomic operations on reference counters            *

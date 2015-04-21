@@ -44,7 +44,7 @@
 namespace cv
 {
 
-BOWTrainer::BOWTrainer()
+BOWTrainer::BOWTrainer() : size(0)
 {}
 
 BOWTrainer::~BOWTrainer()
@@ -192,7 +192,7 @@ void BOWImgDescriptorExtractor::compute( InputArray keypointDescriptors, OutputA
 
     Mat imgDescriptor = _imgDescriptor.getMat();
 
-    float *dptr = (float*)imgDescriptor.data;
+    float *dptr = imgDescriptor.ptr<float>();
     for( size_t i = 0; i < matches.size(); i++ )
     {
         int queryIdx = matches[i].queryIdx;

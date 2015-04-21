@@ -12,6 +12,7 @@
 //
 // Copyright (C) 2000-2008, Intel Corporation, all rights reserved.
 // Copyright (C) 2009, Willow Garage Inc., all rights reserved.
+// Copyright (C) 2014, Itseez Inc., all rights reserved.
 // Third party copyrights are property of their respective owners.
 //
 // Redistribution and use in source and binary forms, with or without modification,
@@ -41,7 +42,7 @@
 //M*/
 
 #include "precomp.hpp"
-#include "opencl_kernels.hpp"
+#include "opencl_kernels_imgproc.hpp"
 
 #if defined (HAVE_IPP) && (IPP_VERSION_MAJOR >= 7)
 static IppStatus sts = ippInit();
@@ -50,12 +51,112 @@ static IppStatus sts = ippInit();
 namespace cv
 {
 
+template <typename T, typename ST, typename QT>
+struct Integral_SIMD
+{
+    bool operator()(const T *, size_t,
+                    ST *, size_t,
+                    QT *, size_t,
+                    ST *, size_t,
+                    Size, int) const
+    {
+        return false;
+    }
+};
+
+#if CV_SSE2
+
+template <>
+struct Integral_SIMD<uchar, int, double>
+{
+    Integral_SIMD()
+    {
+        haveSSE2 = checkHardwareSupport(CV_CPU_SSE2);
+    }
+
+    bool operator()(const uchar * src, size_t _srcstep,
+                    int * sum, size_t _sumstep,
+                    double * sqsum, size_t,
+                    int * tilted, size_t,
+                    Size size, int cn) const
+    {
+        if (sqsum || tilted || cn != 1 || !haveSSE2)
+            return false;
+
+        // the first iteration
+        memset(sum, 0, (size.width + 1) * sizeof(int));
+
+        __m128i v_zero = _mm_setzero_si128(), prev = v_zero;
+        int j = 0;
+
+        // the others
+        for (int i = 0; i < size.height; ++i)
+        {
+            const uchar * src_row = src + _srcstep * i;
+            int * prev_sum_row = (int *)((uchar *)sum + _sumstep * i) + 1;
+            int * sum_row = (int *)((uchar *)sum + _sumstep * (i + 1)) + 1;
+
+            sum_row[-1] = 0;
+
+            prev = v_zero;
+            j = 0;
+
+            for ( ; j + 7 < size.width; j += 8)
+            {
+                __m128i vsuml = _mm_loadu_si128((const __m128i *)(prev_sum_row + j));
+                __m128i vsumh = _mm_loadu_si128((const __m128i *)(prev_sum_row + j + 4));
+
+                __m128i el8shr0 = _mm_loadl_epi64((const __m128i *)(src_row + j));
+                __m128i el8shr1 = _mm_slli_si128(el8shr0, 1);
+                __m128i el8shr2 = _mm_slli_si128(el8shr0, 2);
+                __m128i el8shr3 = _mm_slli_si128(el8shr0, 3);
+
+                vsuml = _mm_add_epi32(vsuml, prev);
+                vsumh = _mm_add_epi32(vsumh, prev);
+
+                __m128i el8shr12 = _mm_add_epi16(_mm_unpacklo_epi8(el8shr1, v_zero),
+                                                 _mm_unpacklo_epi8(el8shr2, v_zero));
+                __m128i el8shr03 = _mm_add_epi16(_mm_unpacklo_epi8(el8shr0, v_zero),
+                                                 _mm_unpacklo_epi8(el8shr3, v_zero));
+                __m128i el8 = _mm_add_epi16(el8shr12, el8shr03);
+
+                __m128i el4h = _mm_add_epi16(_mm_unpackhi_epi16(el8, v_zero),
+                                             _mm_unpacklo_epi16(el8, v_zero));
+
+                vsuml = _mm_add_epi32(vsuml, _mm_unpacklo_epi16(el8, v_zero));
+                vsumh = _mm_add_epi32(vsumh, el4h);
+
+                _mm_storeu_si128((__m128i *)(sum_row + j), vsuml);
+                _mm_storeu_si128((__m128i *)(sum_row + j + 4), vsumh);
+
+                prev = _mm_add_epi32(prev, _mm_shuffle_epi32(el4h, _MM_SHUFFLE(3, 3, 3, 3)));
+            }
+
+            for (int v = sum_row[j - 1] - prev_sum_row[j - 1]; j < size.width; ++j)
+                sum_row[j] = (v += src_row[j]) + prev_sum_row[j];
+        }
+
+        return true;
+    }
+
+    bool haveSSE2;
+};
+
+#endif
+
 template<typename T, typename ST, typename QT>
 void integral_( const T* src, size_t _srcstep, ST* sum, size_t _sumstep,
                 QT* sqsum, size_t _sqsumstep, ST* tilted, size_t _tiltedstep,
                 Size size, int cn )
 {
     int x, y, k;
+
+    if (Integral_SIMD<T, ST, QT>()(src, _srcstep,
+                                   sum, _sumstep,
+                                   sqsum, _sqsumstep,
+                                   tilted, _tiltedstep,
+                                   size, cn))
+        return;
 
     int srcstep = (int)(_srcstep/sizeof(T));
     int sumstep = (int)(_sumstep/sizeof(ST));
@@ -219,6 +320,8 @@ static void integral_##suffix( T* src, size_t srcstep, ST* sum, size_t sumstep, 
 DEF_INTEGRAL_FUNC(8u32s, uchar, int, double)
 DEF_INTEGRAL_FUNC(8u32f64f, uchar, float, double)
 DEF_INTEGRAL_FUNC(8u64f64f, uchar, double, double)
+DEF_INTEGRAL_FUNC(16u64f64f, ushort, double, double)
+DEF_INTEGRAL_FUNC(16s64f64f, short, double, double)
 DEF_INTEGRAL_FUNC(32f32f64f, float, float, double)
 DEF_INTEGRAL_FUNC(32f64f64f, float, double, double)
 DEF_INTEGRAL_FUNC(64f64f64f, double, double, double)
@@ -233,97 +336,87 @@ typedef void (*IntegralFunc)(const uchar* src, size_t srcstep, uchar* sum, size_
 
 #ifdef HAVE_OPENCL
 
-enum { vlen = 4 };
-
 static bool ocl_integral( InputArray _src, OutputArray _sum, int sdepth )
 {
-    if ( _src.type() != CV_8UC1 || _src.step() % vlen != 0 || _src.offset() % vlen != 0  ||
-         !(sdepth == CV_32S || sdepth == CV_32F) )
+    bool doubleSupport = ocl::Device::getDefault().doubleFPConfig() > 0;
+
+    if ( (_src.type() != CV_8UC1) ||
+        !(sdepth == CV_32S || sdepth == CV_32F || (doubleSupport && sdepth == CV_64F)))
         return false;
 
-    ocl::Kernel k1("integral_sum_cols", ocl::imgproc::integral_sum_oclsrc,
-                   format("-D sdepth=%d", sdepth));
-    if (k1.empty())
+    static const int tileSize = 16;
+
+    String build_opt = format("-D sumT=%s -D LOCAL_SUM_SIZE=%d%s",
+                                ocl::typeToStr(sdepth), tileSize,
+                                doubleSupport ? " -D DOUBLE_SUPPORT" : "");
+
+    ocl::Kernel kcols("integral_sum_cols", ocl::imgproc::integral_sum_oclsrc, build_opt);
+    if (kcols.empty())
         return false;
 
-    Size size = _src.size(), t_size = Size(((size.height + vlen - 1) / vlen) * vlen, size.width),
-            ssize(size.width + 1, size.height + 1);
-    _sum.create(ssize, sdepth);
-    UMat src = _src.getUMat(), t_sum(t_size, sdepth), sum = _sum.getUMat();
-    t_sum = t_sum(Range::all(), Range(0, size.height));
-
-    int offset = (int)src.offset / vlen, pre_invalid = (int)src.offset % vlen;
-    int vcols = (pre_invalid + src.cols + vlen - 1) / vlen;
-    int sum_offset = (int)sum.offset / vlen;
-
-    k1.args(ocl::KernelArg::PtrReadOnly(src), ocl::KernelArg::PtrWriteOnly(t_sum),
-            offset, pre_invalid, src.rows, src.cols, (int)src.step, (int)t_sum.step);
-    size_t gt = ((vcols + 1) / 2) * 256, lt = 256;
-    if (!k1.run(1, &gt, &lt, false))
+    UMat src = _src.getUMat();
+    Size src_size = src.size();
+    Size bufsize(((src_size.height + tileSize - 1) / tileSize) * tileSize, ((src_size.width + tileSize - 1) / tileSize) * tileSize);
+    UMat buf(bufsize, sdepth);
+    kcols.args(ocl::KernelArg::ReadOnly(src), ocl::KernelArg::WriteOnlyNoSize(buf));
+    size_t gt = src.cols, lt = tileSize;
+    if (!kcols.run(1, &gt, &lt, false))
         return false;
 
-    ocl::Kernel k2("integral_sum_rows", ocl::imgproc::integral_sum_oclsrc,
-                   format("-D sdepth=%d", sdepth));
-    k2.args(ocl::KernelArg::PtrReadWrite(t_sum), ocl::KernelArg::PtrWriteOnly(sum),
-            t_sum.rows, t_sum.cols, (int)t_sum.step, (int)sum.step, sum_offset);
+    ocl::Kernel krows("integral_sum_rows", ocl::imgproc::integral_sum_oclsrc, build_opt);
+    if (krows.empty())
+        return false;
 
-    size_t gt2 = t_sum.cols  * 32, lt2 = 256;
-    return k2.run(1, &gt2, &lt2, false);
+    Size sumsize(src_size.width + 1, src_size.height + 1);
+    _sum.create(sumsize, sdepth);
+    UMat sum = _sum.getUMat();
+
+    krows.args(ocl::KernelArg::ReadOnlyNoSize(buf), ocl::KernelArg::WriteOnly(sum));
+    gt = src.rows;
+    return krows.run(1, &gt, &lt, false);
 }
 
 static bool ocl_integral( InputArray _src, OutputArray _sum, OutputArray _sqsum, int sdepth, int sqdepth )
 {
     bool doubleSupport = ocl::Device::getDefault().doubleFPConfig() > 0;
 
-    if ( _src.type() != CV_8UC1 || _src.step() % vlen != 0 || _src.offset() % vlen != 0 ||
-         (!doubleSupport && (sdepth == CV_64F || sqdepth == CV_64F)) )
+    if ( _src.type() != CV_8UC1 || (!doubleSupport && (sdepth == CV_64F || sqdepth == CV_64F)) )
         return false;
 
-    char cvt[40];
-    String opts = format("-D sdepth=%d -D sqdepth=%d -D TYPE=%s -D TYPE4=%s4 -D convert_TYPE4=%s%s",
-                         sdepth, sqdepth, ocl::typeToStr(sqdepth), ocl::typeToStr(sqdepth),
-                         ocl::convertTypeStr(sdepth, sqdepth, 4, cvt),
-                         doubleSupport ? " -D DOUBLE_SUPPORT" : "");
+    static const int tileSize = 16;
 
-    ocl::Kernel k1("integral_cols", ocl::imgproc::integral_sqrsum_oclsrc, opts);
-    if (k1.empty())
+    String build_opt = format("-D SUM_SQUARE -D sumT=%s -D sumSQT=%s -D LOCAL_SUM_SIZE=%d%s",
+                                ocl::typeToStr(sdepth), ocl::typeToStr(sqdepth),
+                                tileSize,
+                                doubleSupport ? " -D DOUBLE_SUPPORT" : "");
+
+    ocl::Kernel kcols("integral_sum_cols", ocl::imgproc::integral_sum_oclsrc, build_opt);
+    if (kcols.empty())
         return false;
 
-    Size size = _src.size(), dsize = Size(size.width + 1, size.height + 1),
-            t_size = Size(((size.height + vlen - 1) / vlen) * vlen, size.width);
-    UMat src = _src.getUMat(), t_sum(t_size, sdepth), t_sqsum(t_size, sqdepth);
-    t_sum = t_sum(Range::all(), Range(0, size.height));
-    t_sqsum = t_sqsum(Range::all(), Range(0, size.height));
-
-    _sum.create(dsize, sdepth);
-    _sqsum.create(dsize, sqdepth);
-    UMat sum = _sum.getUMat(), sqsum = _sqsum.getUMat();
-
-    int offset = (int)src.offset / vlen;
-    int pre_invalid = src.offset % vlen;
-    int vcols = (pre_invalid + src.cols + vlen - 1) / vlen;
-    int sum_offset = (int)(sum.offset / sum.elemSize());
-    int sqsum_offset = (int)(sqsum.offset / sqsum.elemSize());
-
-    k1.args(ocl::KernelArg::PtrReadOnly(src), ocl::KernelArg::PtrWriteOnly(t_sum),
-            ocl::KernelArg::PtrWriteOnly(t_sqsum), offset, pre_invalid, src.rows,
-            src.cols, (int)src.step, (int)t_sum.step, (int)t_sqsum.step);
-
-    size_t gt = ((vcols + 1) / 2) * 256, lt = 256;
-    if (!k1.run(1, &gt, &lt, false))
+    UMat src = _src.getUMat();
+    Size src_size = src.size();
+    Size bufsize(((src_size.height + tileSize - 1) / tileSize) * tileSize, ((src_size.width + tileSize - 1) / tileSize) * tileSize);
+    UMat buf(bufsize, sdepth);
+    UMat buf_sq(bufsize, sqdepth);
+    kcols.args(ocl::KernelArg::ReadOnly(src), ocl::KernelArg::WriteOnlyNoSize(buf), ocl::KernelArg::WriteOnlyNoSize(buf_sq));
+    size_t gt = src.cols, lt = tileSize;
+    if (!kcols.run(1, &gt, &lt, false))
         return false;
 
-    ocl::Kernel k2("integral_rows", ocl::imgproc::integral_sqrsum_oclsrc, opts);
-    if (k2.empty())
+    ocl::Kernel krows("integral_sum_rows", ocl::imgproc::integral_sum_oclsrc, build_opt);
+    if (krows.empty())
         return false;
 
-    k2.args(ocl::KernelArg::PtrReadOnly(t_sum), ocl::KernelArg::PtrReadOnly(t_sqsum),
-            ocl::KernelArg::PtrWriteOnly(sum), ocl::KernelArg::PtrWriteOnly(sqsum),
-            t_sum.rows, t_sum.cols, (int)t_sum.step, (int)t_sqsum.step,
-            (int)sum.step, (int)sqsum.step, sum_offset, sqsum_offset);
+    Size sumsize(src_size.width + 1, src_size.height + 1);
+    _sum.create(sumsize, sdepth);
+    UMat sum = _sum.getUMat();
+    _sqsum.create(sumsize, sqdepth);
+    UMat sum_sq = _sqsum.getUMat();
 
-    size_t gt2 = t_sum.cols  * 32, lt2 = 256;
-    return k2.run(1, &gt2, &lt2, false);
+    krows.args(ocl::KernelArg::ReadOnlyNoSize(buf), ocl::KernelArg::ReadOnlyNoSize(buf_sq), ocl::KernelArg::WriteOnly(sum), ocl::KernelArg::WriteOnlyNoSize(sum_sq));
+    gt = src.rows;
+    return krows.run(1, &gt, &lt, false);
 }
 
 #endif
@@ -362,33 +455,42 @@ void cv::integral( InputArray _src, OutputArray _sum, OutputArray _sqsum, Output
         sqsum = _sqsum.getMat();
     };
 
-#if defined (HAVE_IPP) && (IPP_VERSION_MAJOR >= 7)
-    if( ( depth == CV_8U ) && ( sdepth == CV_32F || sdepth == CV_32S ) && ( !_tilted.needed() ) && ( !_sqsum.needed() || sqdepth == CV_64F ) && ( cn == 1 ) )
+#if defined(HAVE_IPP) && !defined(HAVE_IPP_ICV_ONLY) // Disabled on ICV due invalid results
+    CV_IPP_CHECK()
     {
-        IppiSize srcRoiSize = ippiSize( src.cols, src.rows );
-        if( sdepth == CV_32F )
+        if( ( depth == CV_8U ) && ( sdepth == CV_32F || sdepth == CV_32S ) && ( !_tilted.needed() ) && ( !_sqsum.needed() || sqdepth == CV_64F ) && ( cn == 1 ) )
         {
-            if( _sqsum.needed() )
+            IppStatus status = ippStsErr;
+            IppiSize srcRoiSize = ippiSize( src.cols, src.rows );
+            if( sdepth == CV_32F )
             {
-                ippiSqrIntegral_8u32f64f_C1R( (const Ipp8u*)src.data, (int)src.step, (Ipp32f*)sum.data, (int)sum.step, (Ipp64f*)sqsum.data, (int)sqsum.step, srcRoiSize, 0, 0 );
+                if( _sqsum.needed() )
+                {
+                    status = ippiSqrIntegral_8u32f64f_C1R( (const Ipp8u*)src.data, (int)src.step, (Ipp32f*)sum.data, (int)sum.step, (Ipp64f*)sqsum.data, (int)sqsum.step, srcRoiSize, 0, 0 );
+                }
+                else
+                {
+                    status = ippiIntegral_8u32f_C1R( (const Ipp8u*)src.data, (int)src.step, (Ipp32f*)sum.data, (int)sum.step, srcRoiSize, 0 );
+                }
             }
-            else
+            else if( sdepth == CV_32S )
             {
-                ippiIntegral_8u32f_C1R( (const Ipp8u*)src.data, (int)src.step, (Ipp32f*)sum.data, (int)sum.step, srcRoiSize, 0 );
+                if( _sqsum.needed() )
+                {
+                    status = ippiSqrIntegral_8u32s64f_C1R( (const Ipp8u*)src.data, (int)src.step, (Ipp32s*)sum.data, (int)sum.step, (Ipp64f*)sqsum.data, (int)sqsum.step, srcRoiSize, 0, 0 );
+                }
+                else
+                {
+                    status = ippiIntegral_8u32s_C1R( (const Ipp8u*)src.data, (int)src.step, (Ipp32s*)sum.data, (int)sum.step, srcRoiSize, 0 );
+                }
             }
+            if (0 <= status)
+            {
+                CV_IMPL_ADD(CV_IMPL_IPP);
+                return;
+            }
+            setIppErrorStatus();
         }
-        else if( sdepth == CV_32S )
-        {
-            if( _sqsum.needed() )
-            {
-                ippiSqrIntegral_8u32s64f_C1R( (const Ipp8u*)src.data, (int)src.step, (Ipp32s*)sum.data, (int)sum.step, (Ipp64f*)sqsum.data, (int)sqsum.step, srcRoiSize, 0, 0 );
-            }
-            else
-            {
-                ippiIntegral_8u32s_C1R( (const Ipp8u*)src.data, (int)src.step, (Ipp32s*)sum.data, (int)sum.step, srcRoiSize, 0 );
-            }
-        }
-        return;
     }
 #endif
 
@@ -409,6 +511,10 @@ void cv::integral( InputArray _src, OutputArray _sum, OutputArray _sqsum, Output
         func = (IntegralFunc)integral_8u32f32f;
     else if( depth == CV_8U && sdepth == CV_64F && sqdepth == CV_64F )
         func = (IntegralFunc)integral_8u64f64f;
+    else if( depth == CV_16U && sdepth == CV_64F && sqdepth == CV_64F )
+        func = (IntegralFunc)integral_16u64f64f;
+    else if( depth == CV_16S && sdepth == CV_64F && sqdepth == CV_64F )
+        func = (IntegralFunc)integral_16s64f64f;
     else if( depth == CV_32F && sdepth == CV_32F && sqdepth == CV_64F )
         func = (IntegralFunc)integral_32f32f64f;
     else if( depth == CV_32F && sdepth == CV_32F && sqdepth == CV_32F )
@@ -420,8 +526,8 @@ void cv::integral( InputArray _src, OutputArray _sum, OutputArray _sqsum, Output
     else
         CV_Error( CV_StsUnsupportedFormat, "" );
 
-    func( src.data, src.step, sum.data, sum.step, sqsum.data, sqsum.step,
-          tilted.data, tilted.step, src.size(), cn );
+    func( src.ptr(), src.step, sum.ptr(), sum.step, sqsum.ptr(), sqsum.step,
+          tilted.ptr(), tilted.step, src.size(), cn );
 }
 
 void cv::integral( InputArray src, OutputArray sum, int sdepth )

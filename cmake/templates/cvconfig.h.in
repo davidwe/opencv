@@ -76,6 +76,9 @@
 /* ffmpeg in Gentoo */
 #cmakedefine HAVE_GENTOO_FFMPEG
 
+/* Geospatial Data Abstraction Library */
+#cmakedefine HAVE_GDAL
+
 /* GStreamer multimedia framework */
 #cmakedefine HAVE_GSTREAMER
 
@@ -93,6 +96,10 @@
 
 /* Intel Integrated Performance Primitives */
 #cmakedefine HAVE_IPP
+#cmakedefine HAVE_IPP_ICV_ONLY
+
+/* Intel IPP Async */
+#cmakedefine HAVE_IPP_A
 
 /* JPEG-2000 codec */
 #cmakedefine HAVE_JASPER
@@ -115,6 +122,7 @@
 /* OpenCL Support */
 #cmakedefine HAVE_OPENCL
 #cmakedefine HAVE_OPENCL_STATIC
+#cmakedefine HAVE_OPENCL_SVM
 
 /* OpenEXR codec */
 #cmakedefine HAVE_OPENEXR
@@ -124,6 +132,9 @@
 
 /* OpenNI library */
 #cmakedefine HAVE_OPENNI
+
+/* OpenNI library */
+#cmakedefine HAVE_OPENNI2
 
 /* PNG codec */
 #cmakedefine HAVE_PNG
@@ -158,15 +169,12 @@
 /* Win32 UI */
 #cmakedefine HAVE_WIN32UI
 
-/* Windows Runtime support */
-#cmakedefine HAVE_WINRT
-
 /* XIMEA camera support */
 #cmakedefine HAVE_XIMEA
 
 /* Xine video library */
 #cmakedefine HAVE_XINE
 
-/* Define to 1 if your processor stores words with the most significant byte
+/* Define if your processor stores words with the most significant byte
    first (like Motorola and SPARC, unlike Intel and VAX). */
 #cmakedefine WORDS_BIGENDIAN

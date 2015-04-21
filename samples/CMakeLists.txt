@@ -10,7 +10,6 @@ if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_LIST_DIR)
 #
 # ----------------------------------------------------------------------------
 
-add_subdirectory(c)
 add_subdirectory(cpp)
 add_subdirectory(gpu)
 add_subdirectory(tapi)
@@ -21,6 +20,10 @@ endif()
 
 if(ANDROID AND BUILD_ANDROID_EXAMPLES)
   add_subdirectory(android)
+endif()
+
+if(INSTALL_PYTHON_EXAMPLES)
+  add_subdirectory(python2)
 endif()
 
 #
@@ -60,7 +63,6 @@ if(MSVC)
   endif()
 endif()
 
-add_subdirectory(c)
 add_subdirectory(cpp)
 # FIXIT: can't use cvconfig.h in samples: add_subdirectory(gpu)
 

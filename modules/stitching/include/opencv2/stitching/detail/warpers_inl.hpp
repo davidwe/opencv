@@ -47,6 +47,8 @@
 #include "warpers.hpp" // Make your IDE see declarations
 #include <limits>
 
+//! @cond IGNORED
+
 namespace cv {
 namespace detail {
 
@@ -92,7 +94,7 @@ template <class P>
 Point RotationWarperBase<P>::warp(InputArray src, InputArray K, InputArray R, int interp_mode, int border_mode,
                                   OutputArray dst)
 {
-    Mat xmap, ymap;
+    UMat xmap, ymap;
     Rect dst_roi = buildMaps(src.size(), K, R, xmap, ymap);
 
     dst.create(dst_roi.height + 1, dst_roi.width + 1, src.type());
@@ -766,5 +768,7 @@ void PlanePortraitProjector::mapBackward(float u0, float v0, float &x, float &y)
 
 } // namespace detail
 } // namespace cv
+
+//! @endcond
 
 #endif // __OPENCV_STITCHING_WARPERS_INL_HPP__
